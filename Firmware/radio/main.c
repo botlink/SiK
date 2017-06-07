@@ -48,9 +48,9 @@ __pdata uint8_t num_fh_channels;
 #include "AES/aes.h"
 #endif
 
-// Hardcoded timing values:(
+// Hardcoded timing values
 #define SERIAL_TIMEOUT_TICKS (1000 / 16)	// 1ms for 115kbps
-#define PLL_DELAY_TICKS (800 / 16)		// 800us
+#define DELAY_RSSI_TICKS (800 / 16)		// 800us
 #define TX_TIMEOUT_TICKS (1000000 / 16)		// 1s
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,12 +110,11 @@ bool feature_set_channel;
 bool feature_rtscts;
 
 static void
-radio_set_channel_delay(uint8_t channel) {
-	__pdata uint16_t radio_set_channel_time;
+delay_rssi() {
+	__pdata uint16_t delay_rssi_time;
 
-	radio_set_channel(channel);
-	radio_set_channel_time = timer2_tick();
-	while(timer2_tick() - radio_set_channel_time < PLL_DELAY_TICKS);	// Delay for PLL stabilization
+	delay_rssi_time = timer2_tick();
+	while(timer2_tick() - delay_rssi_time < DELAY_RSSI_TICKS);
 }
 
 static void
@@ -210,7 +209,8 @@ transparent_serial_loop(void) {
 							rssi_start = buf[0];
 							rssi_len = buf[1];
 							for(i = 0; i < rssi_len; i++) {
-								radio_set_channel_delay(rssi_start + i);
+								radio_set_channel(rssi_start + i);
+								delay_rssi();
 								buf[i] = radio_current_rssi();
 							}
 							serial_write_buf(buf, i);
@@ -235,6 +235,7 @@ transparent_serial_loop(void) {
 		// Else if we received something via the radio, send it out the serial port
 		} else if(radio_receive_packet(&radio_len, buf)) {
 			rssi = radio_last_rssi();
+			delay_rssi();
 			noise = radio_current_rssi();
 
 			// A tiny AT_TEST_RSSI implementation
