@@ -52,16 +52,21 @@ enum ParamID {
 	PARAM_NETID,			// network ID
 	PARAM_TXPOWER,			// transmit power (dBm)
 	PARAM_ECC,				// ECC using golay encoding
-	PARAM_MAVLINK,			// MAVLink framing, 0=ignore, 1=use, 2=rc-override
-	PARAM_OPPRESEND,		// opportunistic resend // DISABLED
+	//PARAM_MAVLINK,			// MAVLink framing, 0=ignore, 1=use, 2=rc-override
+	PARAM_RSSIMONITORING,		// RSSI monitoring: 0 to disable, 1 to add it over radio and 2 to add it over serial
+	//PARAM_OPPRESEND,		// opportunistic resend // DISABLED
+	PARAM_SETCHANNEL,		// The last two bytes of the serial frame are used to set the RF channel
 	PARAM_MIN_FREQ,			// min frequency in MHz
 	PARAM_MAX_FREQ,			// max frequency in MHz
 	PARAM_NUM_CHANNELS,		// number of hopping channels
-	PARAM_DUTY_CYCLE,		// duty cycle (percentage)
-	PARAM_LBT_RSSI,			// listen before talk threshold
+	//PARAM_DUTY_CYCLE,		// duty cycle (percentage)
+	PARAM_PLACEHOLDER1,		// Placeholder for 3DRRadio GUI (PARAM_DUTY_CYCLE)
+	//PARAM_LBT_RSSI,			// listen before talk threshold
+	PARAM_PLACEHOLDER2,		// Placeholder for 3DRRadio GUI (PARAM_LBT_RSSI)
 	PARAM_MANCHESTER,		// enable manchester encoding
 	PARAM_RTSCTS,			// enable hardware flow control
-	PARAM_MAX_WINDOW,		// The maximum window size allowed
+	//PARAM_MAX_WINDOW,		// The maximum window size allowed
+	PARAM_MAIN_FREQ,		// Override BOARD_FREQUENCY_REG with 0x43, 0x47, 0x86 or 0x91
 #ifdef INCLUDE_AES
   PARAM_ENCRYPTION,     // no Enycryption (0), 128 or 256 bit key
 #endif

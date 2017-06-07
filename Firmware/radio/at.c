@@ -33,7 +33,7 @@
 ///
 
 #include "radio.h"
-#include "tdm.h"
+//#include "tdm.h"
 #include "flash_layout.h"
 #include "at.h"
 #include "board.h"
@@ -220,7 +220,7 @@ at_command(void)
 		if ((at_cmd_len >= 2) && (at_cmd[0] == 'R') && (at_cmd[1] == 'T')) {
 			// remote AT command - send it to the tdm
 			// system to send to the remote radio
-			tdm_remote_at();
+			//tdm_remote_at();
 			at_cmd_len = 0;
 			at_cmd_ready = false;
 			return;
@@ -342,10 +342,10 @@ at_i(void)
     print_ID_vals('S', PARAM_MAX, param_name, param_get);
     return;
   case '6':
-    tdm_report_timing();
+    //tdm_report_timing();
     return;
   case '7':
-    tdm_show_rssi();
+    //tdm_show_rssi();
     return;
   default:
     at_error();
@@ -420,7 +420,7 @@ at_ampersand(void)
 		break;
 
 	case 'P':
-		tdm_change_phase();
+		//tdm_change_phase();
 		break;
 
 	case 'T':

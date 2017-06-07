@@ -40,7 +40,7 @@
 ///
 
 #include "radio.h"
-#include "tdm.h"
+//#include "tdm.h"
 #include "crc.h"
 #include <flash_layout.h>
 
@@ -54,24 +54,24 @@ __code const struct parameter_info {
 	const char	*name;
 	param_t		default_value;
 } parameter_info[PARAM_MAX] = {
-	{"FORMAT",         PARAM_FORMAT_CURRENT},
-	{"SERIAL_SPEED",   57}, // match APM default of 57600
-	{"AIR_SPEED",      64}, // relies on MAVLink flow control
-	{"NETID",          25},
-	{"TXPOWER",        20},
-	{"ECC",             0},
-	{"MAVLINK",         1},
-	{"OPPRESEND",       0},
-	{"MIN_FREQ",        0},
-	{"MAX_FREQ",        0},
-	{"NUM_CHANNELS",    0},
-	{"DUTY_CYCLE",    100},
-	{"LBT_RSSI",        0},
-	{"MANCHESTER",      0},
-	{"RTSCTS",          0},
-	{"MAX_WINDOW",    131},
+	{"FORMAT",           PARAM_FORMAT_CURRENT},
+	{"SERIAL_SPEED",     115},
+	{"AIR_SPEED",        8},
+	{"NETID",            0xF0F0},
+	{"TXPOWER",          20},
+	{"ECC",              0},
+	{"RSSIMONITORING",   0},
+	{"SETCHANNEL",       0},
+	{"MIN_FREQ",         0},
+	{"MAX_FREQ",         0},
+	{"NUM_CHANNELS",     0},
+	{"PLACEHOLDER",      0},         // Placeholder for 3DRRadio GUI (DUTY_CYCLE)
+	{"PLACEHOLDER",      0},         // Placeholder for 3DRRadio GUI (LBT_RSSI)
+	{"MANCHESTER",       0},
+	{"RTSCTS",           0},
+	{"MAIN_FREQ",        FREQ_NONE}, // Don't override by default
 #ifdef INCLUDE_AES
-	{"ENCRYPTION_LEVEL", 0}, // no Enycryption (0), 128 or 256 bit key
+	{"ENCRYPTION_LEVEL", 0},         // no Enycryption (0), 128 or 256 bit key
 #endif
 };
 
@@ -148,17 +148,22 @@ param_check(__pdata enum ParamID id, __data uint32_t val)
 		break;
 
 	case PARAM_ECC:
-	case PARAM_OPPRESEND:
+	case PARAM_SETCHANNEL:
 		// boolean 0/1 only
 		if (val > 1)
 			return false;
 		break;
 
-	case PARAM_MAVLINK:
+	case PARAM_RSSIMONITORING:
 		if (val > 2)
 			return false;
 		break;
 
+	case PARAM_NUM_CHANNELS:
+		if (val < 2)
+			return false;
+		break;
+/*
 	case PARAM_MAX_WINDOW:
 		// 131 milliseconds == 0x1FFF 16 usec ticks,
 		// which is the maximum we can handle with a 13
@@ -166,7 +171,7 @@ param_check(__pdata enum ParamID id, __data uint32_t val)
 		if (val > 131)
 			return false;
 		break;
-
+*/
 	default:
 		// no sanity check for this value
 		break;
@@ -189,7 +194,7 @@ param_set(__data enum ParamID param, __pdata param_t value)
 		radio_set_transmit_power(value);
 		value = radio_get_transmit_power();
 		break;
-
+/*
 	case PARAM_DUTY_CYCLE:
 		// update duty cycle immediately
 		value = constrain(value, 0, 100);
@@ -203,13 +208,15 @@ param_set(__data enum ParamID param, __pdata param_t value)
 		}
 		lbt_rssi = value;
 		break;
-
-	case PARAM_MAVLINK:
-		feature_mavlink_framing = (uint8_t) value;
-		value = feature_mavlink_framing;
+*/
+	case PARAM_RSSIMONITORING:
+		feature_rssi_monitoring = (uint8_t) value;
+		value = feature_rssi_monitoring;
 		break;
 
-	case PARAM_OPPRESEND:
+	case PARAM_SETCHANNEL:
+		feature_set_channel = value?true:false;
+		value = feature_set_channel?1:0;
 		break;
 
 	case PARAM_RTSCTS:

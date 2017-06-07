@@ -34,7 +34,7 @@
 ///
 
 #include "serial.h"
-#include "packet.h"
+//#include "packet.h"
 
 #ifdef CPU_SI1030
 #include "AES/aes.h"
@@ -606,7 +606,7 @@ void serial_device_set_speed(register uint8_t speed)
 
 	// tell the packet layer how fast the serial link is. This is
 	// needed for packet framing timeouts
-	packet_set_serial_speed(speed*125UL);	
+	//packet_set_serial_speed(speed*125UL);	
 }
 
 

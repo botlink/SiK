@@ -38,13 +38,20 @@
 
 #include <stdarg.h>
 #include "radio.h"
-#include "tdm.h"
+//#include "tdm.h"
 #include "timer.h"
-#include "freq_hopping.h"
+//#include "freq_hopping.h"
+#define MAX_FREQ_CHANNELS 250
+__pdata uint8_t num_fh_channels;
 
 #ifdef INCLUDE_AES
 #include "AES/aes.h"
 #endif
+
+// Hardcoded timing values:(
+#define SERIAL_TIMEOUT_TICKS (1000 / 16)	// 1ms for 115kbps
+#define PLL_DELAY_TICKS (800 / 16)		// 800us
+#define TX_TIMEOUT_TICKS (1000000 / 16)		// 1s
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @name	Interrupt vector prototypes
@@ -97,8 +104,164 @@ __pdata struct statistics statistics, remote_statistics;
 
 /// optional features
 bool feature_golay;
-uint8_t feature_mavlink_framing;
+//uint8_t feature_mavlink_framing;
+uint8_t feature_rssi_monitoring;
+bool feature_set_channel;
 bool feature_rtscts;
+
+static void
+radio_set_channel_delay(uint8_t channel) {
+	__pdata uint16_t radio_set_channel_time;
+
+	radio_set_channel(channel);
+	radio_set_channel_time = timer2_tick();
+	while(timer2_tick() - radio_set_channel_time < PLL_DELAY_TICKS);	// Delay for PLL stabilization
+}
+
+static void
+radio_transmit_switch(uint8_t length, __xdata uint8_t * __pdata buf, __pdata uint16_t timeout_ticks) {
+	LED_RADIO = LED_ON;
+	#ifdef SWITCH_CONTROL2
+		SWITCH_CONTROL2 = false;
+	#endif
+	#ifdef SWITCH_CONTROL1
+		SWITCH_CONTROL1 = true;
+	#endif
+	radio_transmit(length, buf, timeout_ticks);
+	#ifdef SWITCH_CONTROL1
+		SWITCH_CONTROL1 = false;
+	#endif
+	#ifdef SWITCH_CONTROL2
+		SWITCH_CONTROL2 = true;
+	#endif
+	LED_RADIO = LED_OFF;
+}
+
+static void
+transparent_serial_loop(void) {
+	__pdata uint16_t serial_len;
+	__pdata uint16_t old_serial_len = 0;
+	__pdata uint8_t max_serial_len;
+	__pdata uint8_t radio_len;
+	__pdata uint16_t serial_time = 0;
+	__xdata uint8_t buf[MAX_PACKET_LENGTH + 2];			// Local RSSI monitoring add two bytes over serial
+	__pdata uint8_t rssi = 0;
+	__pdata uint8_t noise = 0;
+	__pdata uint8_t transmit_channel = 0;
+	__pdata uint8_t receive_channel = 0;
+	__pdata uint8_t rssi_start;
+	__pdata uint8_t rssi_len;
+	__pdata uint8_t i;
+
+	for(;;) {
+
+		if(!radio_receive_in_progress()) {
+			LED_ACTIVITY = LED_OFF;
+
+			serial_len = serial_read_available();
+			if(serial_len != old_serial_len)
+				serial_time = timer2_tick();
+			old_serial_len = serial_len;
+
+			// If no more data come from the serial port after a short time
+			if(serial_len && timer2_tick() - serial_time > SERIAL_TIMEOUT_TICKS) {
+
+				// Calculation of max_serial_len
+				if(feature_golay)
+					max_serial_len = MAX_PACKET_LENGTH / 2 - 6;
+				else
+					max_serial_len = MAX_PACKET_LENGTH;
+				if(feature_rssi_monitoring == 1)
+					max_serial_len -= 2;		// Remote RSSI monitoring add two bytes over radio
+				if(feature_set_channel)
+					max_serial_len += 2;		// This feature cut two bytes from serial buffer
+
+				// Flush an oversized packet
+				if(serial_len > max_serial_len) {
+					while(serial_read_available())
+						serial_read();
+					serial_len = 0;
+				}
+
+				// Read the serial port and transmit
+				if(serial_len && serial_read_buf(buf, serial_len)) {
+
+					if(feature_set_channel) {
+
+						// The last two bytes of the serial frame are used to set the RF channel
+						if(serial_len > 2) {
+							receive_channel = buf[--serial_len];	// Cut these bytes
+							transmit_channel = buf[--serial_len];
+
+							// If this feature is enabled, transmit RSSI and noise level byte over the air
+							if(feature_rssi_monitoring == 1) {
+								buf[serial_len++] = rssi;	// Add a RSSI byte
+								buf[serial_len++] = noise;	// Add a noise level byte
+							}
+
+							if(transmit_channel < num_fh_channels)
+								radio_set_channel(transmit_channel);
+							radio_transmit_switch(serial_len, buf, TX_TIMEOUT_TICKS);
+							if(receive_channel < num_fh_channels)
+								radio_set_channel(receive_channel);
+
+						// A two byte serial frame is used to get the RSSI of multiple channels
+						} else if(serial_len == 2 && buf[1] && buf[0] + buf[1] <= num_fh_channels) {
+							rssi_start = buf[0];
+							rssi_len = buf[1];
+							for(i = 0; i < rssi_len; i++) {
+								radio_set_channel_delay(rssi_start + i);
+								buf[i] = radio_current_rssi();
+							}
+							serial_write_buf(buf, i);
+
+						// An one byte serial frame is transmitted on the current channel
+						} else if(serial_len == 1)
+							radio_transmit_switch(1, buf, TX_TIMEOUT_TICKS);
+
+					// No feature_set_channel
+					} else {
+						if(feature_rssi_monitoring == 1) {
+							buf[serial_len++] = rssi;
+							buf[serial_len++] = noise;
+						}
+						radio_transmit_switch(serial_len, buf, TX_TIMEOUT_TICKS);
+					}
+
+					radio_receiver_on();
+				}
+			}
+
+		// Else if we received something via the radio, send it out the serial port
+		} else if(radio_receive_packet(&radio_len, buf)) {
+			rssi = radio_last_rssi();
+			noise = radio_current_rssi();
+
+			// A tiny AT_TEST_RSSI implementation
+			if(at_testmode == AT_TEST_RSSI) {
+				printf("RS%u NO%u ER%u CE%u CP%u\n",
+					rssi,
+					noise,
+					errors.rx_errors,
+					errors.corrected_errors,
+					errors.corrected_packets);
+			} else {
+
+				// If this feature is enabled, transmit RSSI and noise level byte over serial
+				if(feature_rssi_monitoring == 2) {
+					buf[radio_len++] = rssi;	// Add a RSSI byte
+					buf[radio_len++] = noise;	// Add a noise level byte
+				}
+				serial_write_buf(buf, radio_len);
+			}
+
+		} else
+			LED_ACTIVITY = LED_ON;
+
+		// Give the AT command processor a chance to handle a command
+		at_command();
+	}
+}
 
 void
 main(void)
@@ -119,7 +282,9 @@ main(void)
 		param_default();
 
 	// setup boolean features
-	feature_mavlink_framing = param_get(PARAM_MAVLINK);
+	//feature_mavlink_framing = param_get(PARAM_MAVLINK);
+	feature_rssi_monitoring = param_get(PARAM_RSSIMONITORING);
+	feature_set_channel = param_get(PARAM_SETCHANNEL)?true:false;
 	feature_golay = param_get(PARAM_ECC)?true:false;
 	feature_rtscts = param_get(PARAM_RTSCTS)?true:false;
 
@@ -146,7 +311,8 @@ main(void)
 	}
 #endif // INCLUDE_AES
 
-	tdm_serial_loop();
+	//tdm_serial_loop();
+	transparent_serial_loop();
 }
 
 void
@@ -371,7 +537,7 @@ radio_init(void)
 	if (freq_max == freq_min) {
 		freq_max = freq_min + 1000000UL;
 	}
-
+/*
 	// get the duty cycle we will use
 	duty_cycle = param_get(PARAM_DUTY_CYCLE);
 	duty_cycle = constrain(duty_cycle, 0, 100);
@@ -384,14 +550,15 @@ radio_init(void)
 		lbt_rssi = constrain(lbt_rssi, 25, 220);
 	}
 	param_set(PARAM_LBT_RSSI, lbt_rssi);
-
+*/
 	// sanity checks
 	param_set(PARAM_MIN_FREQ, freq_min/1000);
 	param_set(PARAM_MAX_FREQ, freq_max/1000);
 	param_set(PARAM_NUM_CHANNELS, num_fh_channels);
 
-	channel_spacing = (freq_max - freq_min) / (num_fh_channels+2);
-
+	//channel_spacing = (freq_max - freq_min) / (num_fh_channels+2);
+	channel_spacing = (freq_max - freq_min) / (num_fh_channels - 1);
+/*
 	// add half of the channel spacing, to ensure that we are well
 	// away from the edges of the allowed range
 	freq_min += channel_spacing/2;
@@ -406,7 +573,7 @@ radio_init(void)
 	debug("freq low=%lu high=%lu spacing=%lu\n", 
 	       freq_min, freq_min+(num_fh_channels*channel_spacing), 
 	       channel_spacing);
-
+*/
 	// set the frequency and channel spacing
 	// change base freq based on netid
 	radio_set_frequency(freq_min);
@@ -415,7 +582,8 @@ radio_init(void)
 	radio_set_channel_spacing(channel_spacing);
 
 	// start on a channel chosen by network ID
-	radio_set_channel(param_get(PARAM_NETID) % num_fh_channels);
+	//radio_set_channel(param_get(PARAM_NETID) % num_fh_channels);
+	radio_set_channel(0);
 
 	// And intilise the radio with them.
 	if (!radio_configure(param_get(PARAM_AIR_SPEED)) &&
@@ -442,9 +610,9 @@ radio_init(void)
 #endif
 
 	// initialise frequency hopping system
-	fhop_init();
+	//fhop_init();
 
 	// initialise TDM system
-	tdm_init();
+	//tdm_init();
 }
 
