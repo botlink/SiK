@@ -4,6 +4,9 @@ Firmware for SiLabs Si1000 - Si102x/3x ISM radios
 
 SiK is a collection of firmware and tools for radios based on the cheap, versatile SiLabs Si1000 SoC.
 
+## Serveurperso firmware mod for Ham Radio
+https://www.serveurperso.com/?page=robot
+
 ## Branch Build Status
 [![Build Status](http://jenkins.hovo.id.au/buildStatus/icon?job=SiK)](http://jenkins.hovo.id.au/job/SiK/)
 
