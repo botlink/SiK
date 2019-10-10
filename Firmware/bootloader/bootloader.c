@@ -99,9 +99,10 @@ bl_main(void)
 	// Do some simple debouncing on the bootloader-entry
 	// strap/button.
 	debounce_count = 0;
-	for (i = 0; i < 255; i++) {
-		if (BUTTON_BOOTLOAD == BUTTON_ACTIVE)
-			debounce_count++;
+
+	for (i = 0U; i < 255U; i++) {
+        if (BUTTON_BOOTLOAD == BUTTON_ACTIVE)
+            debounce_count++;
 	}
 
 	// Turn on the LED to indicate the bootloader is running
