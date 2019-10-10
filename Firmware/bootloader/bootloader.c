@@ -35,6 +35,7 @@
 ///
 
 #pragma codeseg HOME
+#pragma less_pedantic //this file has lots of errors on sdcc 3.9.0
 
 #include <compiler_defs.h>
 #include <stdio.h>
