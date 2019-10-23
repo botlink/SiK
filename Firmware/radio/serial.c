@@ -537,12 +537,13 @@ serial_read_space(void)
 	return space;
 }
 
-void
-putchar(char c) __reentrant
+int 
+putchar(int c) __reentrant
 {
 	if (c == '\n')
 		_serial_write('\r');
 	_serial_write(c);
+    return c;
 }
 
 
